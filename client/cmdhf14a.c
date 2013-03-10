@@ -16,19 +16,22 @@
 #include "util.h"
 #include "iso14443crc.h"
 #include "data.h"
-#include "proxusb.h"
+//#include "proxusb.h"
+#include "proxmark3.h"
 #include "ui.h"
 #include "cmdparser.h"
 #include "cmdhf14a.h"
 #include "common.h"
 #include "cmdmain.h"
+#include "mifare.h"
 
 static int CmdHelp(const char *Cmd);
 
 int CmdHF14AList(const char *Cmd)
 {
   uint8_t got[1920];
-  GetFromBigBuf(got, sizeof(got));
+  GetFromBigBuf(got,sizeof(got),0);
+  WaitForResponse(CMD_ACK,NULL);
 
   PrintAndLog("recorded activity:");
   PrintAndLog(" ETU     :rssi: who bytes");
@@ -161,42 +164,200 @@ int CmdHF14AReader(const char *Cmd)
 {
 	UsbCommand c = {CMD_READER_ISO_14443a, {ISO14A_CONNECT, 0, 0}};
 	SendCommand(&c);
-	UsbCommand * resp = WaitForResponse(CMD_ACK);
-	uint8_t              * uid  = resp->d.asBytes;
-	iso14a_card_select_t * card = (iso14a_card_select_t *)(uid + 12);
 
-	if(resp->arg[0] == 0) {
+	UsbCommand resp;
+  WaitForResponse(CMD_ACK,&resp);
+	
+	iso14a_card_select_t *card = (iso14a_card_select_t *)resp.d.asBytes;
+
+	if(resp.arg[0] == 0) {
 		PrintAndLog("iso14443a card select failed");
 		return 0;
 	}
 
 	PrintAndLog("ATQA : %02x %02x", card->atqa[0], card->atqa[1]);
-	PrintAndLog(" UID : %s", sprint_hex(uid, 12));
-	PrintAndLog(" SAK : %02x [%d]", card->sak, resp->arg[0]);
+	PrintAndLog(" UID : %s", sprint_hex(card->uid, card->uidlen));
+	PrintAndLog(" SAK : %02x [%d]", card->sak, resp.arg[0]);
 
 	switch (card->sak) {
-		case 0x00: PrintAndLog(" SAK : NXP MIFARE Ultralight | Ultralight C"); break;
-		case 0x04: PrintAndLog(" SAK : NXP MIFARE (various !DESFire !DESFire EV1)"); break;
+		case 0x00: PrintAndLog("TYPE : NXP MIFARE Ultralight | Ultralight C"); break;
+		case 0x04: PrintAndLog("TYPE : NXP MIFARE (various !DESFire !DESFire EV1)"); break;
 
-		case 0x08: PrintAndLog(" SAK : NXP MIFARE CLASSIC 1k | Plus 2k"); break;
-		case 0x09: PrintAndLog(" SAK : NXP MIFARE Mini 0.3k"); break;
-		case 0x10: PrintAndLog(" SAK : NXP MIFARE Plus 2k"); break;
-		case 0x11: PrintAndLog(" SAK : NXP MIFARE Plus 4k"); break;
-		case 0x18: PrintAndLog(" SAK : NXP MIFARE Classic 4k | Plus 4k"); break;
-		case 0x20: PrintAndLog(" SAK : NXP MIFARE DESFire 4k | DESFire EV1 2k/4k/8k | Plus 2k/4k | JCOP 31/41"); break;
-		case 0x24: PrintAndLog(" SAK : NXP MIFARE DESFire | DESFire EV1"); break;
-		case 0x28: PrintAndLog(" SAK : JCOP31 or JCOP41 v2.3.1"); break;
-		case 0x38: PrintAndLog(" SAK : Nokia 6212 or 6131 MIFARE CLASSIC 4K"); break;
-		case 0x88: PrintAndLog(" SAK : Infineon MIFARE CLASSIC 1K"); break;
-		case 0x98: PrintAndLog(" SAK : Gemplus MPCOS"); break;
+		case 0x08: PrintAndLog("TYPE : NXP MIFARE CLASSIC 1k | Plus 2k"); break;
+		case 0x09: PrintAndLog("TYPE : NXP MIFARE Mini 0.3k"); break;
+		case 0x10: PrintAndLog("TYPE : NXP MIFARE Plus 2k"); break;
+		case 0x11: PrintAndLog("TYPE : NXP MIFARE Plus 4k"); break;
+		case 0x18: PrintAndLog("TYPE : NXP MIFARE Classic 4k | Plus 4k"); break;
+		case 0x20: PrintAndLog("TYPE : NXP MIFARE DESFire 4k | DESFire EV1 2k/4k/8k | Plus 2k/4k | JCOP 31/41"); break;
+		case 0x24: PrintAndLog("TYPE : NXP MIFARE DESFire | DESFire EV1"); break;
+		case 0x28: PrintAndLog("TYPE : JCOP31 or JCOP41 v2.3.1"); break;
+		case 0x38: PrintAndLog("TYPE : Nokia 6212 or 6131 MIFARE CLASSIC 4K"); break;
+		case 0x88: PrintAndLog("TYPE : Infineon MIFARE CLASSIC 1K"); break;
+		case 0x98: PrintAndLog("TYPE : Gemplus MPCOS"); break;
 		default: ;
 	}
-	if(resp->arg[0] == 1)
-		PrintAndLog(" ATS : %s", sprint_hex(card->ats, card->ats_len));
-	else
-		PrintAndLog("proprietary non-iso14443a card found, RATS not supported");
+	if(resp.arg[0] == 1) {
+		bool ta1 = 0, tb1 = 0, tc1 = 0;
+		int pos;
 
-	return resp->arg[0];
+		PrintAndLog(" ATS : %s", sprint_hex(card->ats, card->ats_len));
+		if (card->ats_len > 0) {
+			PrintAndLog("       -  TL : length is %d bytes", card->ats[0]);
+		}
+		if (card->ats_len > 1) {
+			ta1 = (card->ats[1] & 0x10) == 0x10;
+			tb1 = (card->ats[1] & 0x20) == 0x20;
+			tc1 = (card->ats[1] & 0x40) == 0x40;
+			PrintAndLog("       -  T0 : TA1 is%s present, TB1 is%s present, "
+					"TC1 is%s present, FSCI is %d",
+				(ta1 ? "" : " NOT"), (tb1 ? "" : " NOT"), (tc1 ? "" : " NOT"),
+				(card->ats[1] & 0x0f));
+		}
+		pos = 2;
+		if (ta1 && card->ats_len > pos) {
+			char dr[16], ds[16];
+			dr[0] = ds[0] = '\0';
+			if (card->ats[pos] & 0x10) strcat(ds, "2, ");
+			if (card->ats[pos] & 0x20) strcat(ds, "4, ");
+			if (card->ats[pos] & 0x40) strcat(ds, "8, ");
+			if (card->ats[pos] & 0x01) strcat(dr, "2, ");
+			if (card->ats[pos] & 0x02) strcat(dr, "4, ");
+			if (card->ats[pos] & 0x04) strcat(dr, "8, ");
+			if (strlen(ds) != 0) ds[strlen(ds) - 2] = '\0';
+			if (strlen(dr) != 0) dr[strlen(dr) - 2] = '\0';
+			PrintAndLog("       - TA1 : different divisors are%s supported, "
+					"DR: [%s], DS: [%s]",
+					(card->ats[pos] & 0x80 ? " NOT" : ""), dr, ds);
+			pos++;
+		}
+		if (tb1 && card->ats_len > pos) {
+			PrintAndLog("       - TB1 : SFGI = %d, FWI = %d",
+					(card->ats[pos] & 0x08),
+					(card->ats[pos] & 0x80) >> 4);
+			pos++;
+		}
+		if (tc1 && card->ats_len > pos) {
+			PrintAndLog("       - TC1 : NAD is%s supported, CID is%s supported",
+					(card->ats[pos] & 0x01) ? "" : " NOT",
+					(card->ats[pos] & 0x02) ? "" : " NOT");
+			pos++;
+		}
+		if (card->ats_len > pos) {
+			char *tip = "";
+			if (card->ats_len - pos > 7) {
+				if (memcmp(card->ats + pos, "\xC1\x05\x2F\x2F\x01\xBC\xD6", 7) == 0) {
+					tip = "-> MIFARE Plus X 2K or 4K";
+				} else if (memcmp(card->ats + pos, "\xC1\x05\x2F\x2F\x00\x35\xC7", 7) == 0) {
+					tip = "-> MIFARE Plus S 2K or 4K";
+				}
+			} 
+			PrintAndLog("       -  HB : %s%s", sprint_hex(card->ats + pos, card->ats_len - pos - 2), tip);
+			if (card->ats[pos] == 0xC1) {
+				PrintAndLog("               c1 -> Mifare or (multiple) virtual cards of various type");
+				PrintAndLog("                  %02x -> Length is %d bytes",
+						card->ats[pos + 1], card->ats[pos + 1]);
+				switch (card->ats[pos + 2] & 0xf0) {
+					case 0x10:
+						PrintAndLog("                     1x -> MIFARE DESFire");
+						break;
+					case 0x20:
+						PrintAndLog("                     2x -> MIFARE Plus");
+						break;
+				}
+				switch (card->ats[pos + 2] & 0x0f) {
+					case 0x00:
+						PrintAndLog("                     x0 -> <1 kByte");
+						break;
+					case 0x01:
+						PrintAndLog("                     x0 -> 1 kByte");
+						break;
+					case 0x02:
+						PrintAndLog("                     x0 -> 2 kByte");
+						break;
+					case 0x03:
+						PrintAndLog("                     x0 -> 4 kByte");
+						break;
+					case 0x04:
+						PrintAndLog("                     x0 -> 8 kByte");
+						break;
+				}
+				switch (card->ats[pos + 3] & 0xf0) {
+					case 0x00:
+						PrintAndLog("                        0x -> Engineering sample");
+						break;
+					case 0x20:
+						PrintAndLog("                        2x -> Released");
+						break;
+				}
+				switch (card->ats[pos + 3] & 0x0f) {
+					case 0x00:
+						PrintAndLog("                        x0 -> Generation 1");
+						break;
+					case 0x01:
+						PrintAndLog("                        x1 -> Generation 2");
+						break;
+					case 0x02:
+						PrintAndLog("                        x2 -> Generation 3");
+						break;
+				}
+				switch (card->ats[pos + 4] & 0x0f) {
+					case 0x00:
+						PrintAndLog("                           x0 -> Only VCSL supported");
+						break;
+					case 0x01:
+						PrintAndLog("                           x1 -> VCS, VCSL, and SVC supported");
+						break;
+					case 0x0E:
+						PrintAndLog("                           xE -> no VCS command supported");
+						break;
+				}
+			}
+		}
+	} else {
+		PrintAndLog("proprietary non iso14443a-4 card found, RATS not supported");
+  }
+
+	return resp.arg[0];
+}
+
+// Collect ISO14443 Type A UIDs
+int CmdHF14ACUIDs(const char *Cmd)
+{
+	// requested number of UIDs
+	int n = atoi(Cmd);
+	// collect at least 1 (e.g. if no parameter was given)
+	n = n > 0 ? n : 1;
+
+	PrintAndLog("Collecting %d UIDs", n);
+	PrintAndLog("Start: %u", time(NULL));
+	// repeat n times
+	for (int i = 0; i < n; i++) {
+		// execute anticollision procedure
+		UsbCommand c = {CMD_READER_ISO_14443a, {ISO14A_CONNECT, 0, 0}};
+		SendCommand(&c);
+    
+    UsbCommand resp;
+    WaitForResponse(CMD_ACK,&resp);
+
+		uint8_t *uid  = resp.d.asBytes;
+		iso14a_card_select_t *card = (iso14a_card_select_t *)(uid + 12);
+
+		// check if command failed
+		if (resp.arg[0] == 0) {
+			PrintAndLog("Card select failed.");
+		} else {
+			// check if UID is 4 bytes
+			if ((card->atqa[1] & 0xC0) == 0) {
+				PrintAndLog("%02X%02X%02X%02X",
+				            *uid, *(uid + 1), *(uid + 2), *(uid + 3));
+			} else {
+				PrintAndLog("UID longer than 4 bytes");
+			}
+		}
+	}
+	PrintAndLog("End: %u", time(NULL));
+
+	return 1;
 }
 
 // ## simulate iso14443a tag
@@ -230,7 +391,7 @@ int CmdHF14ASim(const char *Cmd)
 
 	// Are we handling the (optional) second part uid?
 	if (long_uid > 0xffffffff) {
-		PrintAndLog("Emulating ISO/IEC 14443 type A tag with 7 byte UID (%014llx)",long_uid);
+		PrintAndLog("Emulating ISO/IEC 14443 type A tag with 7 byte UID (%014"llx")",long_uid);
 		// Store the second part
 		c.arg[2] = (long_uid & 0xffffffff);
 		long_uid >>= 32;
@@ -310,18 +471,18 @@ int CmdHF14ASnoop(const char *Cmd) {
 
 static command_t CommandTable[] = 
 {
-  {"help",   CmdHelp,          1, "This help"},
-  {"list",   CmdHF14AList,     0, "List ISO 14443a history"},
-  {"reader", CmdHF14AReader,   0, "Act like an ISO14443 Type A reader"},
-  {"sim",    CmdHF14ASim,      0, "<UID> -- Fake ISO 14443a tag"},
-  {"snoop",  CmdHF14ASnoop,    0, "Eavesdrop ISO 14443 Type A"},
+  {"help",   CmdHelp,              1, "This help"},
+  {"list",   CmdHF14AList,         0, "List ISO 14443a history"},
+  {"reader", CmdHF14AReader,       0, "Act like an ISO14443 Type A reader"},
+  {"cuids",  CmdHF14ACUIDs,        0, "<n> Collect n>0 ISO14443 Type A UIDs in one go"},
+  {"sim",    CmdHF14ASim,          0, "<UID> -- Fake ISO 14443a tag"},
+  {"snoop",  CmdHF14ASnoop,        0, "Eavesdrop ISO 14443 Type A"},
   {NULL, NULL, 0, NULL}
 };
 
-int CmdHF14A(const char *Cmd)
-{
+int CmdHF14A(const char *Cmd) {
 	// flush
-	while (WaitForResponseTimeout(CMD_ACK, 500) != NULL) ;
+	WaitForResponseTimeout(CMD_ACK,NULL,100);
 
 	// parse
   CmdsParse(CommandTable, Cmd);

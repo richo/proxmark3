@@ -12,7 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include "proxusb.h"
+//#include "proxusb.h"
+#include "proxmark3.h"
 #include "data.h"
 #include "graph.h"
 #include "ui.h"
@@ -23,6 +24,9 @@
 #include "cmdlfhid.h"
 #include "cmdlfti.h"
 #include "cmdlfem4x.h"
+#include "cmdlfhitag.h"
+#include "cmdlft55xx.h"
+#include "cmdlfpcf7931.h"
 
 static int CmdHelp(const char *Cmd);
 
@@ -34,7 +38,7 @@ int CmdLFCommandRead(const char *Cmd)
   dummy[0]= ' ';
 
   UsbCommand c = {CMD_MOD_THEN_ACQUIRE_RAW_ADC_SAMPLES_125K};
-  sscanf(Cmd, "%i %i %i %s %s", &c.arg[0], &c.arg[1], &c.arg[2], (char *) &c.d.asBytes,(char *) &dummy+1);
+  sscanf(Cmd, "%"lli" %"lli" %"lli" %s %s", &c.arg[0], &c.arg[1], &c.arg[2],(char*)(&c.d.asBytes),(char*)(&dummy+1));
   // in case they specified 'h'
   strcpy((char *)&c.d.asBytes + strlen((char *)c.d.asBytes), dummy);
   SendCommand(&c);
@@ -363,7 +367,7 @@ int CmdLFRead(const char *Cmd)
     return 0;
   }
   SendCommand(&c);
-  WaitForResponse(CMD_ACK);
+  WaitForResponse(CMD_ACK,NULL);
   return 0;
 }
 
@@ -400,7 +404,7 @@ int CmdLFSim(const char *Cmd)
       c.d.asBytes[j] = GraphBuffer[i+j];
     }
     SendCommand(&c);
-    WaitForResponse(CMD_ACK);
+    WaitForResponse(CMD_ACK,NULL);
   }
 
   PrintAndLog("Starting simulator...");
@@ -535,7 +539,10 @@ static command_t CommandTable[] =
   {"simbidir",    CmdLFSimBidir,      0, "Simulate LF tag (with bidirectional data transmission between reader and tag)"},
   {"simman",      CmdLFSimManchester, 0, "<Clock> <Bitstream> [GAP] Simulate arbitrary Manchester LF tag"},
   {"ti",          CmdLFTI,            1, "{ TI RFIDs... }"},
+  {"hitag",       CmdLFHitag,         1, "{ Hitag tags and transponders... }"},
   {"vchdemod",    CmdVchDemod,        1, "['clone'] -- Demodulate samples for VeriChip"},
+  {"t55xx",       CmdLFT55XX,         1, "{ T55xx RFIDs... }"},
+  {"pcf7931",     CmdLFPCF7931,       1, "{PCF7931 RFIDs...}"},
   {NULL, NULL, 0, NULL}
 };
 

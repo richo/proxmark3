@@ -31,16 +31,17 @@ int MfSniffInit(void){
 }
 
 int MfSniffEnd(void){
-	UsbCommand ack = {CMD_ACK, {0, 0, 0}};
+//	UsbCommand ack = {CMD_ACK, {0, 0, 0}};
 
 	LED_B_ON();
-	UsbSendPacket((uint8_t *)&ack, sizeof(UsbCommand));
+  cmd_send(CMD_ACK,0,0,0,0,0);
+//	UsbSendPacket((uint8_t *)&ack, sizeof(UsbCommand));
 	LED_B_OFF();
 
 	return 0;
 }
 
-int RAMFUNC MfSniffLogic(const uint8_t * data, int len, int bitCnt, int reader) {
+int RAMFUNC MfSniffLogic(const uint8_t * data, int len, uint32_t parity, int bitCnt, int reader) {
 
 	if ((len == 1) && (bitCnt = 9) && (data[0] > 0x0F)) { 
 		sniffState = SNF_INIT;
@@ -121,18 +122,18 @@ int RAMFUNC MfSniffLogic(const uint8_t * data, int len, int bitCnt, int reader) 
 			sniffBuf[11] = sniffSAK;
 			sniffBuf[12] = 0xFF;
 			sniffBuf[13] = 0xFF;
-			LogTrace(sniffBuf, 14, 0, 0, true);
+			LogTrace(sniffBuf, 14, 0, parity, true);
 			timerData = GetTickCount();
 		}
 		case SNF_CARD_CMD:{
-			LogTrace(data, len, 0, 0, true);
+			LogTrace(data, len, 0, parity, true);
 
 			sniffState = SNF_CARD_RESP;
 			timerData = GetTickCount();
 			break;
 		}
 		case SNF_CARD_RESP:{
-			LogTrace(data, len, 0, 0, false);
+			LogTrace(data, len, 0, parity, false);
 
 			sniffState = SNF_CARD_CMD;
 			timerData = GetTickCount();
@@ -166,23 +167,25 @@ int intMfSniffSend() {
 	FpgaDisableSscDma();
 
 	while (pckLen > 0) {
-		pckSize = min(32, pckLen);
-		UsbCommand ack = {CMD_ACK, {1, pckSize, pckNum}};
-		memcpy(ack.d.asBytes, trace + traceLen - pckLen, pckSize);
+		pckSize = MIN(32, pckLen);
+//		UsbCommand ack = {CMD_ACK, {1, pckSize, pckNum}};
+//		memcpy(ack.d.asBytes, trace + traceLen - pckLen, pckSize);
 	
 		LED_B_ON();
-		UsbSendPacket((uint8_t *)&ack, sizeof(UsbCommand));
-		SpinDelay(20);
+    cmd_send(CMD_ACK,1,pckSize,pckNum,trace + traceLen - pckLen,pckSize);
+//		UsbSendPacket((uint8_t *)&ack, sizeof(UsbCommand));
+//		SpinDelay(20);
 		LED_B_OFF();
 
 		pckLen -= pckSize;
 		pckNum++;
 	}
 
-	UsbCommand ack = {CMD_ACK, {2, 0, 0}};
+//	UsbCommand ack = {CMD_ACK, {2, 0, 0}};
 
 	LED_B_ON();
-	UsbSendPacket((uint8_t *)&ack, sizeof(UsbCommand));
+  cmd_send(CMD_ACK,2,0,0,0,0);
+//	UsbSendPacket((uint8_t *)&ack, sizeof(UsbCommand));
 	LED_B_OFF();
 
 	traceLen = 0;

@@ -14,6 +14,7 @@
 #include <string.h>
 #include "sleep.h"
 #include "cmdparser.h"
+#include "proxmark3.h"
 #include "data.h"
 #include "usb_cmd.h"
 #include "ui.h"
@@ -22,6 +23,7 @@
 #include "cmdhw.h"
 #include "cmdlf.h"
 #include "cmdmain.h"
+#include "util.h"
 
 unsigned int current_command = CMD_UNKNOWN;
 unsigned int received_command = CMD_UNKNOWN;
@@ -55,37 +57,40 @@ int CmdQuit(const char *Cmd)
   return 0;
 }
 
-UsbCommand * WaitForResponseTimeout(uint32_t response_type, uint32_t ms_timeout) {
-	UsbCommand * ret =  NULL;
-	int i=0;
+bool WaitForResponseTimeout(uint32_t cmd, UsbCommand* response, size_t ms_timeout) {
 
-	for(i=0; received_command != response_type && i < ms_timeout / 10; i++) {
+	// Wait until the command is received
+  for(size_t i=0; received_command != cmd && i < ms_timeout/10; i++) {
 		msleep(10); // XXX ugh
+    if (i == 200) { // Two seconds elapsed
+      PrintAndLog("Waiting for a response from the proxmark...");
+      PrintAndLog("Don't forget to cancel its operation first by pressing on the button");
+    }
 	}
 	
-	// There was an evil BUG
-	memcpy(&current_response_user, &current_response, sizeof(UsbCommand));
-	ret = &current_response_user;
+  // Check if timeout occured
+  if(received_command != cmd) return false;
 
-	if(received_command != response_type)
-		ret = NULL;
+	// Copy the received response (if supplied)
+  if (response) {
+    memcpy(response, &current_response, sizeof(UsbCommand));
+  }
 
-	received_command = CMD_UNKNOWN;
+	// Reset the received command
+  received_command = CMD_UNKNOWN;
 
-	return ret;
+	return true;
 }
 
-UsbCommand * WaitForResponse(uint32_t response_type)
-{
-	return WaitForResponseTimeout(response_type, -1);
+bool WaitForResponse(uint32_t cmd, UsbCommand* response) {
+	return WaitForResponseTimeout(cmd,response,-1);
 }
 
 //-----------------------------------------------------------------------------
 // Entry point into our code: called whenever the user types a command and
 // then presses Enter, which the full command line that they typed.
 //-----------------------------------------------------------------------------
-void CommandReceived(char *Cmd)
-{
+void CommandReceived(char *Cmd) {
   CmdsParse(CommandTable, Cmd);
 }
 
@@ -95,23 +100,33 @@ void CommandReceived(char *Cmd)
 //-----------------------------------------------------------------------------
 void UsbCommandReceived(UsbCommand *UC)
 {
+  /*
+  //  Debug
+  printf("UsbCommand length[len=%zd]\n",sizeof(UsbCommand));
+  printf("  cmd[len=%zd]: %"llx"\n",sizeof(UC->cmd),UC->cmd);
+  printf(" arg0[len=%zd]: %"llx"\n",sizeof(UC->arg[0]),UC->arg[0]);
+  printf(" arg1[len=%zd]: %"llx"\n",sizeof(UC->arg[1]),UC->arg[1]);
+  printf(" arg2[len=%zd]: %"llx"\n",sizeof(UC->arg[2]),UC->arg[2]);
+  printf(" data[len=%zd]: %02x%02x%02x...\n",sizeof(UC->d.asBytes),UC->d.asBytes[0],UC->d.asBytes[1],UC->d.asBytes[2]);
+  */
+
   //	printf("%s(%x) current cmd = %x\n", __FUNCTION__, c->cmd, current_command);
-  /* If we recognize a response, return to avoid further processing */
+  // If we recognize a response, return to avoid further processing
   switch(UC->cmd) {
+      // First check if we are handling a debug message
     case CMD_DEBUG_PRINT_STRING: {
-      char s[100];
-      if(UC->arg[0] > 70 || UC->arg[0] < 0) {
-        UC->arg[0] = 0;
-      }
-      memcpy(s, UC->d.asBytes, UC->arg[0]);
-      s[UC->arg[0]] = '\0';
+      char s[USB_CMD_DATA_SIZE+1];
+      size_t len = MIN(UC->arg[0],USB_CMD_DATA_SIZE);
+      memcpy(s,UC->d.asBytes,len);
+      s[len] = 0x00;
       PrintAndLog("#db# %s       ", s);
       return;
-    }
+    } break;
 
-    case CMD_DEBUG_PRINT_INTEGERS:
+    case CMD_DEBUG_PRINT_INTEGERS: {
       PrintAndLog("#db# %08x, %08x, %08x       \r\n", UC->arg[0], UC->arg[1], UC->arg[2]);
       return;
+    } break;
 
     case CMD_MEASURED_ANTENNA_TUNING: {
       int peakv, peakf;
@@ -121,7 +136,6 @@ void UsbCommandReceived(UsbCommand *UC)
       vHf = UC->arg[1] & 0xffff;;
       peakf = UC->arg[2] & 0xffff;
       peakv = UC->arg[2] >> 16;
-      PrintAndLog("");
       PrintAndLog("");
       PrintAndLog("# LF antenna: %5.2f V @   125.00 kHz", vLf125/1000.0);
       PrintAndLog("# LF antenna: %5.2f V @   134.00 kHz", vLf134/1000.0);
@@ -135,12 +149,50 @@ void UsbCommandReceived(UsbCommand *UC)
         PrintAndLog("# Your HF antenna is unusable.");
       else if (vHf<5000)
         PrintAndLog("# Your HF antenna is marginal.");
-      return;
-    }
-    default:
-      break;
+    } break;
+      
+    case CMD_DOWNLOADED_RAW_ADC_SAMPLES_125K: {
+//      printf("received samples: ");
+//      print_hex(UC->d.asBytes,512);
+      sample_buf_len += UC->arg[1];
+//      printf("samples: %zd offset: %d\n",sample_buf_len,UC->arg[0]);
+      memcpy(sample_buf+(UC->arg[0]),UC->d.asBytes,UC->arg[1]);
+    } break;
+
+
+//    case CMD_ACK: {
+//      PrintAndLog("Receive ACK\n");
+//    } break;
+
+    default: {
+      // Maybe it's a response
+      switch(current_command) {
+        case CMD_DOWNLOAD_RAW_ADC_SAMPLES_125K: {
+          if (UC->cmd != CMD_DOWNLOADED_RAW_ADC_SAMPLES_125K) {
+            PrintAndLog("unrecognized command %08x\n", UC->cmd);
+            break;
+          }
+//          int i;
+          PrintAndLog("received samples %d\n",UC->arg[0]);
+          memcpy(sample_buf+UC->arg[0],UC->d.asBytes,48);
+          sample_buf_len += 48;
+//          for(i=0; i<48; i++) sample_buf[i] = UC->d.asBytes[i];
+          received_command = UC->cmd;
+        } break;
+
+        default: {
+        } break;
+      }
+//      // Store the last received command
+//      memcpy(&current_response, UC, sizeof(UsbCommand));
+//      received_command = UC->cmd;
+    } break;
   }
-  /* Maybe it's a response: */
+  // Store the last received command
+  memcpy(&current_response, UC, sizeof(UsbCommand));
+  received_command = UC->cmd;
+/*
+  // Maybe it's a response:
   switch(current_command) {
     case CMD_DOWNLOAD_RAW_ADC_SAMPLES_125K:
       if (UC->cmd != CMD_DOWNLOADED_RAW_ADC_SAMPLES_125K) goto unexpected_response;
@@ -163,4 +215,5 @@ void UsbCommandReceived(UsbCommand *UC)
 		memcpy(&current_response, UC, sizeof(UsbCommand));
 	received_command = UC->cmd;
   }
+ */
 }

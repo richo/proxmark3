@@ -13,11 +13,10 @@
 #ifndef __NONCE2KEY_H
 #define __NONCE2KEY_H
 
-#include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "crapto1.h"
-
-typedef unsigned char byte_t;
+#include "common.h"
 
 int nonce2key(uint32_t uid, uint32_t nt, uint64_t par_info, uint64_t ks_info, uint64_t * key); 
 

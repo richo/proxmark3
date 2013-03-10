@@ -14,7 +14,8 @@
 #include <string.h>
 #include <stdint.h>
 #include "iso14443crc.h"
-#include "proxusb.h"
+//#include "proxusb.h"
+#include "proxmark3.h"
 #include "data.h"
 #include "graph.h"
 #include "ui.h"
@@ -144,7 +145,7 @@ demodError:
 int CmdHF14BList(const char *Cmd)
 {
   uint8_t got[960];
-  GetFromBigBuf(got, sizeof(got));
+  GetFromBigBuf(got,sizeof(got),0);
 
   PrintAndLog("recorded activity:");
   PrintAndLog(" time  :rssi: who bytes");

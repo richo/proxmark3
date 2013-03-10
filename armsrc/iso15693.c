@@ -63,7 +63,7 @@
 #include "apps.h"
 #include "string.h"
 #include "iso15693tools.h"
-
+#include "cmd.h"
 
 #define arraylen(x) (sizeof(x)/sizeof((x)[0]))
 
@@ -1102,7 +1102,7 @@ void ReaderIso15693(uint32_t parameter)
 
 	Dbprintf("%d octets read from IDENTIFY request:", answerLen1);
 	DbdecodeIso15693Answer(answerLen1,answer1);
-	Dbhexdump(answerLen1,answer1);
+	Dbhexdump(answerLen1,answer1,true);
 
 	// UID is reverse
 	if (answerLen1>=12) 
@@ -1113,11 +1113,11 @@ void ReaderIso15693(uint32_t parameter)
 
 	Dbprintf("%d octets read from SELECT request:", answerLen2);
 	DbdecodeIso15693Answer(answerLen2,answer2);
-	Dbhexdump(answerLen2,answer2);
+	Dbhexdump(answerLen2,answer2,true);
 
 	Dbprintf("%d octets read from XXX request:", answerLen3);
 	DbdecodeIso15693Answer(answerLen3,answer3);
-	Dbhexdump(answerLen3,answer3);
+	Dbhexdump(answerLen3,answer3,true);
 
  
 	// read all pages
@@ -1130,7 +1130,7 @@ void ReaderIso15693(uint32_t parameter)
 			if (answerLen2>0) {
 				Dbprintf("READ SINGLE BLOCK %d returned %d octets:",i,answerLen2);
 				DbdecodeIso15693Answer(answerLen2,answer2);
-				Dbhexdump(answerLen2,answer2);
+				Dbhexdump(answerLen2,answer2,true);
 				if ( *((uint32_t*) answer2) == 0x07160101 ) break; // exit on NoPageErr 
 			} 
 			i++;
@@ -1260,27 +1260,28 @@ void DirectTag15693Command(uint32_t datalen,uint32_t speed, uint32_t recv, uint8
 
 	int recvlen=0;
 	uint8_t *recvbuf=(uint8_t *)BigBuf;
-	UsbCommand n;
+//	UsbCommand n;
 	
 	if (DEBUG) {
 		Dbprintf("SEND");
-		Dbhexdump(datalen,data);	
+		Dbhexdump(datalen,data,true);
 	}
 	
 	recvlen=SendDataTag(data,datalen,1,speed,(recv?&recvbuf:NULL));
 
 	if (recv) { 
-		n.cmd=/* CMD_ISO_15693_COMMAND_DONE */ CMD_ACK;
-		n.arg[0]=recvlen>48?48:recvlen;
-		memcpy(n.d.asBytes, recvbuf, 48);
+//		n.cmd=/* CMD_ISO_15693_COMMAND_DONE */ CMD_ACK;
+//		n.arg[0]=recvlen>48?48:recvlen;
+//		memcpy(n.d.asBytes, recvbuf, 48);
 		LED_B_ON();
-		UsbSendPacket((uint8_t *)&n, sizeof(n));
+    cmd_send(CMD_ACK,recvlen>48?48:recvlen,0,0,recvbuf,48);
+//		UsbSendPacket((uint8_t *)&n, sizeof(n));
 		LED_B_OFF();	
 		
 		if (DEBUG) {
 			Dbprintf("RECV");
 			DbdecodeIso15693Answer(recvlen,recvbuf); 
-			Dbhexdump(recvlen,recvbuf); 
+			Dbhexdump(recvlen,recvbuf,true);
 		}
 	}
 

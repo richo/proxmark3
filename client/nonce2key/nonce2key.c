@@ -10,11 +10,15 @@
 // MIFARE Darkside hack
 //-----------------------------------------------------------------------------
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#define llx PRIx64
+
 #include "nonce2key.h"
 #include "ui.h"
 
 int nonce2key(uint32_t uid, uint32_t nt, uint64_t par_info, uint64_t ks_info, uint64_t * key) {
-  struct Crypto1State *state;
+  struct Crypto1State *state, *state_s;
   uint32_t pos, nr, rr, nr_diff;//, ks1, ks2;
   byte_t bt, i, ks3x[8], par[8][8];
   uint64_t key_recovered;
@@ -23,7 +27,7 @@ int nonce2key(uint32_t uid, uint32_t nt, uint64_t par_info, uint64_t ks_info, ui
   // Reset the last three significant bits of the reader nonce
   nr &= 0xffffff1f;
   
-  PrintAndLog("\nuid(%08x) nt(%08x) par(%016llx) ks(%016llx)\n\n",uid,nt,par_info,ks_info);
+  PrintAndLog("\nuid(%08x) nt(%08x) par(%016"llx") ks(%016"llx")\n\n",uid,nt,par_info,ks_info);
 
   for (pos=0; pos<8; pos++)
   {
@@ -47,9 +51,17 @@ int nonce2key(uint32_t uid, uint32_t nt, uint64_t par_info, uint64_t ks_info, ui
   }
   
   state = lfsr_common_prefix(nr, rr, ks3x, par);
-  lfsr_rollback_word(state, uid^nt, 0);
-  crypto1_get_lfsr(state, &key_recovered);
-  crypto1_destroy(state);
+	state_s = 0;
+	for (i = 0; (state) && ((state + i)->odd != 0 || (state + i)->even != 0) && (i < 10); i++)
+	{
+    printf("%08x|%08x\n",(state+i)->odd, (state+i)->even);
+		state_s = state + i;
+	}
+  if (!state_s) return 1;
+	
+  lfsr_rollback_word(state_s, uid^nt, 0);
+  crypto1_get_lfsr(state_s, &key_recovered);
+  if (!state) free(state);
 	
 	*key = key_recovered;
   

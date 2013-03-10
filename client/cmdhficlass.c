@@ -14,18 +14,20 @@
 #include <string.h>
 #include "iso14443crc.h" // Can also be used for iClass, using 0xE012 as CRC-type
 #include "data.h"
-#include "proxusb.h"
+//#include "proxusb.h"
+#include "proxmark3.h"
 #include "ui.h"
 #include "cmdparser.h"
 #include "cmdhficlass.h"
 #include "common.h"
+#include "util.h"
 
 static int CmdHelp(const char *Cmd);
 
 int CmdHFiClassList(const char *Cmd)
 {
   uint8_t got[1920];
-  GetFromBigBuf(got, sizeof(got));
+  GetFromBigBuf(got,sizeof(got),0);
 
   PrintAndLog("recorded activity:");
   PrintAndLog(" ETU     :rssi: who bytes");

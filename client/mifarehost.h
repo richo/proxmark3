@@ -15,7 +15,7 @@
 #include "cmdmain.h"
 #include "ui.h"
 #include "data.h"
-#include "proxusb.h"
+//#include "proxusb.h"
 #include "util.h"
 #include "nonce2key/nonce2key.h"
 #include "nonce2key/crapto1.h"
@@ -73,7 +73,7 @@ int mfCSetBlock(uint8_t blockNo, uint8_t *data, uint8_t *uid, int wantWipe, uint
 int mfCGetBlock(uint8_t blockNo, uint8_t *data, uint8_t params);
 
 int mfTraceInit(uint8_t *tuid, uint8_t *atqa, uint8_t sak, bool wantSaveToEmlFile);
-int mfTraceDecode(uint8_t *data_src, int len, bool wantSaveToEmlFile);
+int mfTraceDecode(uint8_t *data_src, int len, uint32_t parity, bool wantSaveToEmlFile);
 
 int isTraceCardEmpty(void);
 int isBlockEmpty(int blockN);

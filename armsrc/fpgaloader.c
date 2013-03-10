@@ -116,13 +116,11 @@ void FpgaSetupSsc(void)
 
 	// 8 bits per transfer, no loopback, MSB first, 1 transfer per sync
 	// pulse, no output sync, start on positive-going edge of sync
-	AT91C_BASE_SSC->SSC_RFMR = SSC_FRAME_MODE_BITS_IN_WORD(8) |
-		AT91C_SSC_MSBF | SSC_FRAME_MODE_WORDS_PER_TRANSFER(0);
+	AT91C_BASE_SSC->SSC_RFMR = SSC_FRAME_MODE_BITS_IN_WORD(8) |	AT91C_SSC_MSBF | SSC_FRAME_MODE_WORDS_PER_TRANSFER(0);
 
 	// clock comes from TK pin, no clock output, outputs change on falling
 	// edge of TK, start on rising edge of TF
-	AT91C_BASE_SSC->SSC_TCMR = SSC_CLOCK_MODE_SELECT(2) |
-		SSC_CLOCK_MODE_START(5);
+	AT91C_BASE_SSC->SSC_TCMR = SSC_CLOCK_MODE_SELECT(2) |	SSC_CLOCK_MODE_START(5);
 
 	// tx framing is the same as the rx framing
 	AT91C_BASE_SSC->SSC_TFMR = AT91C_BASE_SSC->SSC_RFMR;
@@ -136,18 +134,20 @@ void FpgaSetupSsc(void)
 // ourselves, not to another buffer). The stuff to manipulate those buffers
 // is in apps.h, because it should be inlined, for speed.
 //-----------------------------------------------------------------------------
-void FpgaSetupSscDma(uint8_t *buf, int len)
+bool FpgaSetupSscDma(uint8_t *buf, int len)
 {
+	if (buf == NULL) {
+        return false;
+    }
+
 	AT91C_BASE_PDC_SSC->PDC_PTCR = AT91C_PDC_RXTDIS;
-	
 	AT91C_BASE_PDC_SSC->PDC_RPR = (uint32_t) buf;
 	AT91C_BASE_PDC_SSC->PDC_RCR = len;
 	AT91C_BASE_PDC_SSC->PDC_RNPR = (uint32_t) buf;
 	AT91C_BASE_PDC_SSC->PDC_RNCR = len;
-	
-	if (buf != NULL) {
-		AT91C_BASE_PDC_SSC->PDC_PTCR = AT91C_PDC_RXTEN;
-	}
+	AT91C_BASE_PDC_SSC->PDC_PTCR = AT91C_PDC_RXTEN;
+    
+    return true;
 }
 
 static void DownloadFPGA_byte(unsigned char w)
