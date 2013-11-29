@@ -26,7 +26,7 @@ LUAPLATFORM = mingw
 else ifeq ($(platform),Darwin)
 CXXFLAGS = -I/Library/Frameworks/QtGui.framework/Versions/Current/Headers -I/Library/Frameworks/QtCore.framework/Versions/Current/Headers
 QTLDLIBS = -framework QtGui -framework QtCore
-MOC = moc 
+MOC = moc
 LUAPLATFORM = macosx
 else
 CXXFLAGS = $(shell pkg-config --cflags QtCore QtGui 2>/dev/null) -Wall -O4
@@ -34,7 +34,7 @@ QTLDLIBS = $(shell pkg-config --libs QtCore QtGui 2>/dev/null)
 MOC = $(shell pkg-config --variable=moc_location QtCore)
 LDLIBS +=  -ldl
 
-# Below is a variant you can use if you have problems compiling with QT5 on ubuntu. see http://www.proxmark.org/forum/viewtopic.php?id=1661 for more info. 
+# Below is a variant you can use if you have problems compiling with QT5 on ubuntu. see http://www.proxmark.org/forum/viewtopic.php?id=1661 for more info.
 #MOC = /usr/lib/x86_64-linux-gnu/qt4/bin/moc
 LUAPLATFORM = linux
 endif
@@ -95,11 +95,11 @@ RM = rm -f
 BINS = proxmark3 flasher #snooper cli
 CLEAN = cli cli.exe flasher flasher.exe proxmark3 proxmark3.exe snooper snooper.exe $(CMDOBJS) $(OBJDIR)/*.o *.o *.moc.cpp
 
-all: lua_build $(BINS) 
+all: lua_build $(BINS)
 
 all-static: LDLIBS:=-static $(LDLIBS)
 all-static: snooper cli flasher
-	
+
 proxmark3: LDLIBS+=$(QTLDLIBS)
 proxmark3: $(OBJDIR)/proxmark3.o $(COREOBJS) $(CMDOBJS) $(QTGUI)
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@
