@@ -13,9 +13,9 @@ CXX=g++
 VPATH = ../common
 OBJDIR = obj
 
-LDLIBS = -L/opt/local/lib -L/usr/local/lib -lreadline -lpthread ../liblua/liblua.a
+LDLIBS = -L/usr/local/Cellar/readline/6.2.4/lib -L/opt/local/lib -L/usr/local/lib -lreadline -lpthread -lusb ../liblua/liblua.a
 LDFLAGS = $(COMMON_FLAGS)
-CFLAGS = -std=c99 -I. -I../include -I../common -I/opt/local/include -I../liblua -Wall $(COMMON_FLAGS) -g -O4 
+CFLAGS = -std=c99 -I. -I../include -I../common -I/opt/local/include -I../liblua -Wall $(COMMON_FLAGS) -I/usr/local/Cellar/readline/6.2.4/include -g -O4
 LUAPLATFORM = generic
 
 ifneq (,$(findstring MINGW,$(platform)))
