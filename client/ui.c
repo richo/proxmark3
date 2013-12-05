@@ -14,15 +14,12 @@
 #include <stdio.h>
 #include <time.h>
 #include <readline/readline.h>
-#include <pthread.h>
 
 #include "ui.h"
 
 double CursorScaleFactor;
-int PlotGridX, PlotGridY, PlotGridXdefault= 64, PlotGridYdefault= 64;
+int PlotGridX, PlotGridY;
 int offline;
-int flushAfterWrite = 0;  //buzzy
-extern pthread_mutex_t print_lock;
 
 static char *logfilename = "proxmark3.log";
 
@@ -30,20 +27,17 @@ void PrintAndLog(char *fmt, ...)
 {
 	char *saved_line;
 	int saved_point;
-	va_list argptr, argptr2;
-	static FILE *logfile = NULL;
-	static int logging=1;
+  va_list argptr, argptr2;
+  static FILE *logfile = NULL;
+  static int logging=1;
 
-	// lock this section to avoid interlacing prints from different threats
-	pthread_mutex_lock(&print_lock);
-  
-	if (logging && !logfile) {
-		logfile=fopen(logfilename, "a");
-		if (!logfile) {
-			fprintf(stderr, "Can't open logfile, logging disabled!\n");
-			logging=0;
-		}
-	}
+  if (logging && !logfile) {
+    logfile=fopen(logfilename, "a");
+    if (!logfile) {
+      fprintf(stderr, "Can't open logfile, logging disabled!\n");
+      logging=0;
+    }
+  }
 	
 	int need_hack = (rl_readline_state & RL_STATE_READCMD) > 0;
 
@@ -55,12 +49,12 @@ void PrintAndLog(char *fmt, ...)
 		rl_redisplay();
 	}
 	
-	va_start(argptr, fmt);
-	va_copy(argptr2, argptr);
-	vprintf(fmt, argptr);
-	printf("          "); // cleaning prompt
-	va_end(argptr);
-	printf("\n");
+  va_start(argptr, fmt);
+  va_copy(argptr2, argptr);
+  vprintf(fmt, argptr);
+  printf("          "); // cleaning prompt
+  va_end(argptr);
+  printf("\n");
 
 	if (need_hack) {
 		rl_restore_prompt();
@@ -70,21 +64,13 @@ void PrintAndLog(char *fmt, ...)
 		free(saved_line);
 	}
 	
-	if (logging && logfile) {
-		vfprintf(logfile, fmt, argptr2);
-		fprintf(logfile,"\n");
-		fflush(logfile);
-	}
-	va_end(argptr2);
-
-	if (flushAfterWrite == 1)  //buzzy
-	{
-		fflush(NULL);
-	}
-	//release lock
-	pthread_mutex_unlock(&print_lock);  
+  if (logging && logfile) {
+    vfprintf(logfile, fmt, argptr2);
+    fprintf(logfile,"\n");
+    fflush(logfile);
+  }
+  va_end(argptr2);
 }
-
 
 void SetLogFilename(char *fn)
 {

@@ -11,17 +11,14 @@
 #ifndef SLEEP_H__
 #define SLEEP_H__
 
-#ifdef _WIN32
-# include <windows.h>
-# define sleep(n) Sleep(1000 * n)
-# define msleep(n) Sleep(n)
+#ifdef WIN32
+#include <windows.h>
+#define sleep(n) Sleep(1000 * n)
+#define msleep(n) Sleep(n)
 #else
-# include <inttypes.h>
-# include <unistd.h>
-  void nsleep(uint64_t n);
-# define msleep(n) nsleep(1000000 * n)
-# define usleep(n) nsleep(1000 * n)
-#endif // _WIN32
+#include <unistd.h>
+#define msleep(n) usleep(1000 * n)
+#endif
 
-#endif // SLEEP_H__
+#endif
 

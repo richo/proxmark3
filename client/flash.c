@@ -11,18 +11,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "proxmark3.h"
 #include "sleep.h"
-//#include "proxusb.h"
+#include "proxusb.h"
 #include "flash.h"
 #include "elf.h"
 #include "proxendian.h"
-#include "usb_cmd.h"
-
-void SendCommand(UsbCommand* txcmd);
-void ReceiveCommand(UsbCommand* rxcmd);
-void CloseProxmark();
-int OpenProxmark(size_t i);
 
 // FIXME: what the fuckity fuck
 unsigned int current_command = CMD_UNKNOWN;
@@ -33,7 +26,7 @@ unsigned int current_command = CMD_UNKNOWN;
 #define BOOTLOADER_SIZE        0x2000
 #define BOOTLOADER_END         (FLASH_START + BOOTLOADER_SIZE)
 
-#define BLOCK_SIZE             0x200
+#define BLOCK_SIZE             0x100
 
 static const uint8_t elf_ident[] = {
 	0x7f, 'E', 'L', 'F',
@@ -276,8 +269,8 @@ static int get_proxmark_state(uint32_t *state)
 {
 	UsbCommand c;
 	c.cmd = CMD_DEVICE_INFO;
-//	SendCommand_(&c);
-  SendCommand(&c);
+	SendCommand(&c);
+
 	UsbCommand resp;
 	ReceiveCommand(&resp);
 
@@ -297,7 +290,7 @@ static int get_proxmark_state(uint32_t *state)
 			*state = resp.arg[0];
 			break;
 		default:
-			fprintf(stderr, "Error: Couldn't get proxmark state, bad response type: 0x%04"llx"\n", resp.cmd);
+			fprintf(stderr, "Error: Couldn't get proxmark state, bad response type: 0x%04x\n", resp.cmd);
 			return -1;
 			break;
 	}
@@ -306,7 +299,7 @@ static int get_proxmark_state(uint32_t *state)
 }
 
 // Enter the bootloader to be able to start flashing
-static int enter_bootloader(char *serial_port_name)
+static int enter_bootloader(void)
 {
 	uint32_t state;
 
@@ -337,14 +330,14 @@ static int enter_bootloader(char *serial_port_name)
 			SendCommand(&c);
 			fprintf(stderr,"Press and hold down button NOW if your bootloader requires it.\n");
 		}
-    msleep(100);
-		CloseProxmark();
+		fprintf(stderr,"Waiting for Proxmark to reappear on USB...");
 
-		fprintf(stderr,"Waiting for Proxmark to reappear on %s",serial_port_name);
-    do {
+		CloseProxmark();
+		sleep(1);
+		while (!OpenProxmark(0)) {
 			sleep(1);
 			fprintf(stderr, ".");
-		} while (!OpenProxmark(0));
+		}
 		fprintf(stderr," Found.\n");
 
 		return 0;
@@ -356,21 +349,21 @@ static int enter_bootloader(char *serial_port_name)
 
 static int wait_for_ack(void)
 {
-  UsbCommand ack;
+	UsbCommand ack;
 	ReceiveCommand(&ack);
 	if (ack.cmd != CMD_ACK) {
-		printf("Error: Unexpected reply 0x%04"llx" (expected ACK)\n", ack.cmd);
+		printf("Error: Unexpected reply 0x%04x (expected ACK)\n", ack.cmd);
 		return -1;
 	}
 	return 0;
 }
 
 // Go into flashing mode
-int flash_start_flashing(int enable_bl_writes,char *serial_port_name)
+int flash_start_flashing(int enable_bl_writes)
 {
 	uint32_t state;
 
-	if (enter_bootloader(serial_port_name) < 0)
+	if (enter_bootloader() < 0)
 		return -1;
 
 	if (get_proxmark_state(&state) < 0)
@@ -391,7 +384,6 @@ int flash_start_flashing(int enable_bl_writes,char *serial_port_name)
 			c.arg[2] = 0;
 		}
 		SendCommand(&c);
-//		SendCommand_(&c);
 		return wait_for_ack();
 	} else {
 		fprintf(stderr, "Note: Your bootloader does not understand the new START_FLASH command\n");
@@ -407,26 +399,21 @@ static int write_block(uint32_t address, uint8_t *data, uint32_t length)
 
 	memset(block_buf, 0xFF, BLOCK_SIZE);
 	memcpy(block_buf, data, length);
-  UsbCommand c;
-/*
-	c.cmd = {CMD_SETUP_WRITE};
+
+	UsbCommand c = {CMD_SETUP_WRITE};
 	for (int i = 0; i < 240; i += 48) {
 		memcpy(c.d.asBytes, block_buf + i, 48);
 		c.arg[0] = i / 4;
 		SendCommand(&c);
-//		SendCommand_(&c);
-		if (wait_for_ack() < 0) {
+		if (wait_for_ack() < 0)
 			return -1;
-    }
 	}
-*/
+
 	c.cmd = CMD_FINISH_WRITE;
 	c.arg[0] = address;
-//	memcpy(c.d.asBytes, block_buf+240, 16);
-//	SendCommand_(&c);
-	memcpy(c.d.asBytes, block_buf, length);
-  SendCommand(&c);
-  return wait_for_ack();
+	memcpy(c.d.asBytes, block_buf+240, 16);
+	SendCommand(&c);
+	return wait_for_ack();
 }
 
 // Write a file's segments to Flash
@@ -486,8 +473,6 @@ void flash_free(flash_file_t *ctx)
 // just reset the unit
 int flash_stop_flashing(void) {
 	UsbCommand c = {CMD_HARDWARE_RESET};
-//	SendCommand_(&c);
-  SendCommand(&c);
-  msleep(100);
-  return 0;
+	SendCommand(&c);
+	return 0;
 }

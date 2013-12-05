@@ -14,20 +14,18 @@
 #include <string.h>
 #include "iso14443crc.h" // Can also be used for iClass, using 0xE012 as CRC-type
 #include "data.h"
-//#include "proxusb.h"
-#include "proxmark3.h"
+#include "proxusb.h"
 #include "ui.h"
 #include "cmdparser.h"
 #include "cmdhficlass.h"
 #include "common.h"
-#include "util.h"
 
 static int CmdHelp(const char *Cmd);
 
 int CmdHFiClassList(const char *Cmd)
 {
   uint8_t got[1920];
-  GetFromBigBuf(got,sizeof(got),0);
+  GetFromBigBuf(got, sizeof(got));
 
   PrintAndLog("recorded activity:");
   PrintAndLog(" ETU     :rssi: who bytes");
@@ -172,74 +170,11 @@ int CmdHFiClassSnoop(const char *Cmd)
   return 0;
 }
 
-int CmdHFiClassSim(const char *Cmd)
-{
-  uint8_t simType = 0;
-  uint8_t CSN[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-  if (strlen(Cmd)<2) {
-	PrintAndLog("Usage:  hf iclass sim    <sim type> <CSN (16 hex symbols)>");
-	PrintAndLog("        sample: hf iclass sim 0 031FEC8AF7FF12E0");
-	return 0;
-  }	
-
-  simType = param_get8(Cmd, 0);
-  if (param_gethex(Cmd, 1, CSN, 16)) {
-	PrintAndLog("A CSN should consist of 16 HEX symbols");
-	return 1;
-  }
-  PrintAndLog("--simtype:%02x csn:%s", simType, sprint_hex(CSN, 8));
-
-  UsbCommand c = {CMD_SIMULATE_TAG_ICLASS, {simType}};
-  memcpy(c.d.asBytes, CSN, 8);
-  SendCommand(&c);
-
-  /*UsbCommand * resp = WaitForResponseTimeout(CMD_ACK, 1500);
-  if (resp != NULL) {
-	uint8_t                isOK  = resp->arg[0] & 0xff;
-	PrintAndLog("isOk:%02x", isOK);
-  } else {
-	PrintAndLog("Command execute timeout");
-  }*/
-
-  return 0;
-}
-
-int CmdHFiClassReader(const char *Cmd)
-{
-  uint8_t readerType = 0;
-
-  if (strlen(Cmd)<1) {
-	PrintAndLog("Usage:  hf iclass reader    <reader type>");
-	PrintAndLog("        sample: hf iclass reader 0");
-	return 0;
-  }	
-
-  readerType = param_get8(Cmd, 0);
-  PrintAndLog("--readertype:%02x", readerType);
-
-  UsbCommand c = {CMD_READER_ICLASS, {readerType}};
-  //memcpy(c.d.asBytes, CSN, 8);
-  SendCommand(&c);
-
-  /*UsbCommand * resp = WaitForResponseTimeout(CMD_ACK, 1500);
-  if (resp != NULL) {
-	uint8_t                isOK  = resp->arg[0] & 0xff;
-	PrintAndLog("isOk:%02x", isOK);
-  } else {
-	PrintAndLog("Command execute timeout");
-  }*/
-
-  return 0;
-}
-
 static command_t CommandTable[] = 
 {
   {"help",    CmdHelp,        1, "This help"},
   {"list",    CmdHFiClassList,   0, "List iClass history"},
   {"snoop",   CmdHFiClassSnoop,  0, "Eavesdrop iClass communication"},
-  {"sim",     CmdHFiClassSim,    0, "Simulate iClass tag"},
-  {"reader",  CmdHFiClassReader, 0, "Read an iClass tag"},
   {NULL, NULL, 0, NULL}
 };
 

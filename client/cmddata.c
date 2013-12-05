@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include "proxmark3.h"
+#include "proxusb.h"
 #include "data.h"
 #include "ui.h"
 #include "graph.h"
@@ -153,19 +153,22 @@ int CmdAutoCorr(const char *Cmd)
 int CmdBitsamples(const char *Cmd)
 {
   int cnt = 0;
-  uint8_t got[12288];
-  
-  GetFromBigBuf(got,sizeof(got),0);
-  WaitForResponse(CMD_ACK,NULL);
+  int n = 3072;
 
-    for (int j = 0; j < sizeof(got); j++) {
+  for (int i = 0; i < n; i += 12) {
+    UsbCommand c = {CMD_DOWNLOAD_RAW_ADC_SAMPLES_125K, {i, 0, 0}};
+    SendCommand(&c);
+    WaitForResponse(CMD_DOWNLOADED_RAW_ADC_SAMPLES_125K);
+
+    for (int j = 0; j < 48; j++) {
       for (int k = 0; k < 8; k++) {
-        if(got[j] & (1 << (7 - k))) {
+        if(sample_buf[j] & (1 << (7 - k))) {
           GraphBuffer[cnt++] = 1;
         } else {
           GraphBuffer[cnt++] = 0;
         }
       }
+    }
   }
   GraphTraceLen = cnt;
   RepaintGraphWindow();
@@ -385,51 +388,53 @@ int CmdFSKdemod(const char *Cmd)
 int CmdGrid(const char *Cmd)
 {
   sscanf(Cmd, "%i %i", &PlotGridX, &PlotGridY);
-  PlotGridXdefault= PlotGridX;
-  PlotGridYdefault= PlotGridY;
   RepaintGraphWindow();
   return 0;
 }
 
 int CmdHexsamples(const char *Cmd)
 {
-  int i, j;
+  int n;
   int requested = 0;
   int offset = 0;
-  char string_buf[25];
-  char* string_ptr = string_buf;
-  uint8_t got[40000];
- 
   sscanf(Cmd, "%i %i", &requested, &offset);
-
-  /* if no args send something */
-  if (requested == 0) {
-    requested = 8;
-  }
-  if (offset + requested > sizeof(got)) {
-    PrintAndLog("Tried to read past end of buffer, <bytes> + <offset> > 40000");
+  if (offset % 4 != 0) {
+    PrintAndLog("Offset must be a multiple of 4");
     return 0;
-  } 
+  }
+  offset = offset/4;                
 
-  GetFromBigBuf(got,requested,offset);
-  WaitForResponse(CMD_ACK,NULL);
+  int delivered = 0;
 
-  i = 0;
-  for (j = 0; j < requested; j++) {
-    i++;
-    string_ptr += sprintf(string_ptr, "%02x ", got[j]);
-    if (i == 8) {
-      *(string_ptr - 1) = '\0';    // remove the trailing space
-      PrintAndLog("%s", string_buf);
-      string_buf[0] = '\0';
-      string_ptr = string_buf;
-      i = 0;
+  if (requested == 0) {
+    n = 12;
+    requested = 12;
+  } else {
+    n = requested/4;
+  }
+
+  for (int i = offset; i < n+offset; i += 12) {
+    UsbCommand c = {CMD_DOWNLOAD_RAW_ADC_SAMPLES_125K, {i, 0, 0}};
+    SendCommand(&c);
+    WaitForResponse(CMD_DOWNLOADED_RAW_ADC_SAMPLES_125K);
+    for (int j = 0; j < 48; j += 8) {
+      PrintAndLog("%02x %02x %02x %02x %02x %02x %02x %02x",
+        sample_buf[j+0],
+        sample_buf[j+1],
+        sample_buf[j+2],
+        sample_buf[j+3],
+        sample_buf[j+4],
+        sample_buf[j+5],
+        sample_buf[j+6],
+        sample_buf[j+7],
+        sample_buf[j+8]
+      );
+      delivered += 8;
+      if (delivered >= requested)
+        break;
     }
-    if (j == requested - 1 && string_buf[0] != '\0') { // print any remaining bytes
-      *(string_ptr - 1) = '\0';
-      PrintAndLog("%s", string_buf);
-      string_buf[0] = '\0';
-    }  
+    if (delivered >= requested)
+      break;
   }
   return 0;
 }
@@ -459,21 +464,22 @@ int CmdSamples(const char *Cmd)
 {
   int cnt = 0;
   int n;
-  uint8_t got[40000];
 
   n = strtol(Cmd, NULL, 0);
-  if (n == 0) n = 512;
-  if (n > sizeof(got)) n = sizeof(got);
-  
+  if (n == 0) n = 128;
+  if (n > 16000) n = 16000;
+
   PrintAndLog("Reading %d samples\n", n);
-  GetFromBigBuf(got,n,0);
-  WaitForResponse(CMD_ACK,NULL);
-  for (int j = 0; j < n; j++) {
-    GraphBuffer[cnt++] = ((int)got[j]) - 128;
+  for (int i = 0; i < n; i += 12) {
+    UsbCommand c = {CMD_DOWNLOAD_RAW_ADC_SAMPLES_125K, {i, 0, 0}};
+    SendCommand(&c);
+    WaitForResponse(CMD_DOWNLOADED_RAW_ADC_SAMPLES_125K);
+    for (int j = 0; j < 48; j++) {
+      GraphBuffer[cnt++] = ((int)sample_buf[j]) - 128;
+    }
   }
-  
   PrintAndLog("Done!\n");
-  GraphTraceLen = n;
+  GraphTraceLen = n*4;
   RepaintGraphWindow();
   return 0;
 }
@@ -812,7 +818,7 @@ int CmdThreshold(const char *Cmd)
     if (GraphBuffer[i] >= threshold)
       GraphBuffer[i] = 1;
     else
-      GraphBuffer[i] = -1;
+      GraphBuffer[i] =- 1;
   }
   RepaintGraphWindow();
   return 0;
@@ -860,7 +866,7 @@ static command_t CommandTable[] =
   {"detectclock",   CmdDetectClockRate, 1, "Detect clock rate"},
   {"fskdemod",      CmdFSKdemod,        1, "Demodulate graph window as a HID FSK"},
   {"grid",          CmdGrid,            1, "<x> <y> -- overlay grid on graph window, use zero value to turn off either"},
-  {"hexsamples",    CmdHexsamples,      0, "<bytes> [<offset>] -- Dump big buffer as hex bytes"},  
+  {"hexsamples",    CmdHexsamples,      0, "<blocks> [<offset>] -- Dump big buffer as hex bytes"},  
   {"hide",          CmdHide,            1, "Hide graph window"},
   {"hpf",           CmdHpf,             1, "Remove DC offset from trace"},
   {"load",          CmdLoad,            1, "<filename> -- Load trace (to graph window"},
@@ -868,8 +874,8 @@ static command_t CommandTable[] =
   {"mandemod",      CmdManchesterDemod, 1, "[i] [clock rate] -- Manchester demodulate binary stream (option 'i' to invert output)"},
   {"manmod",        CmdManchesterMod,   1, "[clock rate] -- Manchester modulate a binary stream"},
   {"norm",          CmdNorm,            1, "Normalize max/min to +/-500"},
-  {"plot",          CmdPlot,            1, "Show graph window (hit 'h' in window for keystroke help)"},
-  {"samples",       CmdSamples,         0, "[512 - 40000] -- Get raw samples for graph window"},
+  {"plot",          CmdPlot,            1, "Show graph window"},
+  {"samples",       CmdSamples,         0, "[128 - 16000] -- Get raw samples for graph window"},
   {"save",          CmdSave,            1, "<filename> -- Save trace (from graph window)"},
   {"scale",         CmdScale,           1, "<int> -- Set cursor display scale"},
   {"threshold",     CmdThreshold,       1, "<threshold> -- Maximize/minimize every value in the graph window depending on threshold"},

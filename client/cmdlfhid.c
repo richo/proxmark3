@@ -9,9 +9,7 @@
 //-----------------------------------------------------------------------------
 
 #include <stdio.h>
-#include <string.h>
-//#include "proxusb.h"
-#include "proxmark3.h"
+#include "proxusb.h"
 #include "ui.h"
 #include "graph.h"
 #include "cmdparser.h"
@@ -62,51 +60,12 @@ int CmdHIDSim(const char *Cmd)
   return 0;
 }
 
-int CmdHIDClone(const char *Cmd)
-{
-  unsigned int hi2 = 0, hi = 0, lo = 0;
-  int n = 0, i = 0;
-  UsbCommand c;
-
-  if (strchr(Cmd,'l') != 0) {
-  	while (sscanf(&Cmd[i++], "%1x", &n ) == 1) {
-      hi2 = (hi2 << 4) | (hi >> 28);
-      hi = (hi << 4) | (lo >> 28);
-      lo = (lo << 4) | (n & 0xf);
-    }
-
-    PrintAndLog("Cloning tag with long ID %x%08x%08x", hi2, hi, lo);
-
-    c.d.asBytes[0] = 1;
-  }
-  else {
-  	while (sscanf(&Cmd[i++], "%1x", &n ) == 1) {
-      hi = (hi << 4) | (lo >> 28);
-      lo = (lo << 4) | (n & 0xf);
-    }
-
-    PrintAndLog("Cloning tag with ID %x%08x", hi, lo);
-
-    hi2 = 0;
-    c.d.asBytes[0] = 0;
-  }
-
-  c.cmd = CMD_HID_CLONE_TAG;
-  c.arg[0] = hi2;
-  c.arg[1] = hi;
-  c.arg[2] = lo;
-
-  SendCommand(&c);
-  return 0;
-}
-
 static command_t CommandTable[] = 
 {
   {"help",      CmdHelp,        1, "This help"},
   {"demod",     CmdHIDDemod,    1, "Demodulate HID Prox Card II (not optimal)"},
-  {"fskdemod",  CmdHIDDemodFSK, 1, "Realtime HID FSK demodulator"},
-  {"sim",       CmdHIDSim,      1, "<ID> -- HID tag simulator"},
-  {"clone",     CmdHIDClone,    1, "<ID> ['l'] -- Clone HID to T55x7 (tag must be in antenna)(option 'l' for 84bit ID)"},
+  {"fskdemod",  CmdHIDDemodFSK, 0, "Realtime HID FSK demodulator"},
+  {"sim",       CmdHIDSim,      0, "<ID> -- HID tag simulator"},
   {NULL, NULL, 0, NULL}
 };
 

@@ -8,9 +8,13 @@
 // utilities
 //-----------------------------------------------------------------------------
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 #include "util.h"
 
-#ifndef _WIN32
+#ifndef WIN32
 #include <termios.h>
 #include <sys/ioctl.h> 
 int ukbhit(void)
@@ -44,52 +48,6 @@ int ukbhit(void) {
 }
 #endif
 
-// log files functions
-void AddLogLine(char *fileName, char *extData, char *c) {
-	FILE *fLog = NULL;
-
-	fLog = fopen(fileName, "a");
-	if (!fLog) {
-		printf("Could not append log file %s", fileName);
-		return;
-	}
-
-	fprintf(fLog, "%s", extData);
-	fprintf(fLog, "%s\n", c);
-	fclose(fLog);
-}
-
-void AddLogHex(char *fileName, char *extData, const uint8_t * data, const size_t len){
-	AddLogLine(fileName, extData, sprint_hex(data, len));
-}
-
-void AddLogUint64(char *fileName, char *extData, const uint64_t data) {
-  char buf[100] = {0};
-	sprintf(buf, "%x%x", (unsigned int)((data & 0xFFFFFFFF00000000) >> 32), (unsigned int)(data & 0xFFFFFFFF));
-	AddLogLine(fileName, extData, buf);
-}
-
-void AddLogCurrentDT(char *fileName) {
-	char buff[20];
-	struct tm *curTime;
-
-	time_t now = time(0);
-	curTime = gmtime(&now);
-
-	strftime (buff, sizeof(buff), "%Y-%m-%d %H:%M:%S", curTime);
-	AddLogLine(fileName, "\nanticollision: ", buff);
-}
-
-void FillFileNameByUID(char *fileName, uint8_t * uid, char *ext, int byteCount) {
-	char * fnameptr = fileName;
-	memset(fileName, 0x00, 200);
-	
-	for (int j = 0; j < byteCount; j++, fnameptr += 2)
-		sprintf(fnameptr, "%02x", uid[j]); 
-	sprintf(fnameptr, "%s", ext); 
-}
-
-// printing and converting functions
 
 void print_hex(const uint8_t * data, const size_t len)
 {
@@ -188,7 +146,7 @@ uint8_t param_get8ex(const char *line, int paramnum, int deflt, int base)
 	int bg, en;
 
 	if (!param_getptr(line, &bg, &en, paramnum)) 
-		return strtoul(&line[bg], NULL, base) & 0xff;
+		return strtol(&line[bg], NULL, base) & 0xff;
 	else
 		return deflt;
 }
@@ -198,7 +156,7 @@ uint32_t param_get32ex(const char *line, int paramnum, int deflt, int base)
 	int bg, en;
 
 	if (!param_getptr(line, &bg, &en, paramnum)) 
-		return strtoul(&line[bg], NULL, base);
+		return strtol(&line[bg], NULL, base);
 	else
 		return deflt;
 }
@@ -208,7 +166,7 @@ uint64_t param_get64ex(const char *line, int paramnum, int deflt, int base)
 	int bg, en;
 
 	if (!param_getptr(line, &bg, &en, paramnum)) 
-		return strtoull(&line[bg], NULL, base);
+		return strtol(&line[bg], NULL, base);
 	else
 		return deflt;
 
@@ -235,16 +193,4 @@ int param_gethex(const char *line, int paramnum, uint8_t * data, int hexcnt)
 	}	
 
 	return 0;
-}
-
-int param_getstr(const char *line, int paramnum, char * str)
-{
-	int bg, en;
-
-	if (param_getptr(line, &bg, &en, paramnum)) return 0;
-	
-	memcpy(str, line + bg, en - bg + 1);
-	str[en - bg + 1] = 0;
-	
-	return en - bg + 1;
 }

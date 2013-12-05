@@ -22,11 +22,6 @@
 #include "proxguiqt.h"
 #include "proxgui.h"
 
-int GridOffset= 0;
-bool GridLocked= 0;
-int startMax;
-int PageWidth;
-
 void ProxGuiQT::ShowGraphWindow(void)
 {
 	emit ShowGraphWindowSignal();
@@ -132,19 +127,17 @@ void ProxWidget::paintEvent(QPaintEvent *event)
 	painter.setPen(QColor(100, 100, 100));
 	painter.drawPath(greyPath);
 
-	PageWidth= (int)((r.right() - r.left() - 40) / GraphPixelsPerPoint);
-	
         // plot X and Y grid lines
         int i;
         if ((PlotGridX > 0) && ((PlotGridX * GraphPixelsPerPoint) > 1)) {
-        	for(i = 40 + (GridOffset * GraphPixelsPerPoint); i < r.right(); i += (int)(PlotGridX * GraphPixelsPerPoint)) {
+        	for(i = 40; i < r.right(); i += (int)(PlotGridX * GraphPixelsPerPoint)) {
         		//SelectObject(hdc, GreyPenLite);
         		//MoveToEx(hdc, r.left + i, r.top, NULL);
         		//LineTo(hdc, r.left + i, r.bottom);
         		lightgreyPath.moveTo(r.left()+i,r.top());
 			lightgreyPath.lineTo(r.left()+i,r.bottom());
 			painter.drawPath(lightgreyPath);
-        	} 
+                } 
         } 
         if ((PlotGridY > 0) && ((PlotGridY * GraphPixelsPerPoint) > 1)){
         	for(i = 0; i < ((r.top() + r.bottom())>>1); i += (int)(PlotGridY * GraphPixelsPerPoint)) {
@@ -154,10 +147,11 @@ void ProxWidget::paintEvent(QPaintEvent *event)
         		lightgreyPath.moveTo(r.left() + 40,zeroHeight - i);
 			lightgreyPath.lineTo(r.right(),zeroHeight - i);
 			painter.drawPath(lightgreyPath);
+        		}
         	}
-        }
-
-	startMax = (GraphTraceLen - (int)((r.right() - r.left() - 40) / GraphPixelsPerPoint));
+	
+	int startMax =
+		(GraphTraceLen - (int)((r.right() - r.left() - 40) / GraphPixelsPerPoint));
 	if(startMax < 0) {
 		startMax = 0;
 	}
@@ -270,9 +264,9 @@ void ProxWidget::paintEvent(QPaintEvent *event)
 	painter.drawPath(cursorBPath);
 
 	char str[200];
-	sprintf(str, "@%d   max=%d min=%d mean=%d n=%d/%d    dt=%d [%.3f] zoom=%.3f CursorA=%d [%d] CursorB=%d [%d]    GridX=%d GridY=%d (%s)",
+	sprintf(str, "@%d   max=%d min=%d mean=%d n=%d/%d    dt=%d [%.3f] zoom=%.3f CursorA=%d [%d] CursorB=%d [%d]",
 			GraphStart, yMax, yMin, yMean, n, GraphTraceLen,
-			CursorBPos - CursorAPos, (CursorBPos - CursorAPos)/CursorScaleFactor,GraphPixelsPerPoint,CursorAPos,GraphBuffer[CursorAPos],CursorBPos,GraphBuffer[CursorBPos],PlotGridXdefault,PlotGridYdefault,GridLocked?"Locked":"Unlocked");
+			CursorBPos - CursorAPos, (CursorBPos - CursorAPos)/CursorScaleFactor,GraphPixelsPerPoint,CursorAPos,GraphBuffer[CursorAPos],CursorBPos,GraphBuffer[CursorBPos]);
 
 	painter.setPen(QColor(255, 255, 255));
 	painter.drawText(50, r.bottom() - 20, str);
@@ -288,8 +282,6 @@ ProxWidget::ProxWidget(QWidget *parent) : QWidget(parent), GraphStart(0), GraphP
 	palette.setColor(QPalette::Button, QColor(100, 100, 100));
 	setPalette(palette);
 	setAutoFillBackground(true);
-	CursorAPos = 0;
-	CursorBPos = 0;
 }
 
 void ProxWidget::closeEvent(QCloseEvent *event)
@@ -316,22 +308,6 @@ void ProxWidget::mouseMoveEvent(QMouseEvent *event)
 
 void ProxWidget::keyPressEvent(QKeyEvent *event)
 {
-	int	offset;
-	int	gridchanged;
-
-	gridchanged= 0;
-
-	if(event->modifiers() & Qt::ShiftModifier) {
-		if (PlotGridX)
-			offset= PageWidth - (PageWidth % PlotGridX);
-		else
-			offset= PageWidth;
-	} else 
-		if(event->modifiers() & Qt::ControlModifier)
-			offset= 1;
-		else
-			offset= (int)(20 / GraphPixelsPerPoint);
-
 	switch(event->key()) {
 		case Qt::Key_Down:
 			if(GraphPixelsPerPoint <= 50) {
@@ -347,92 +323,18 @@ void ProxWidget::keyPressEvent(QKeyEvent *event)
 
 		case Qt::Key_Right:
 			if(GraphPixelsPerPoint < 20) {
-				if (PlotGridX && GridLocked && GraphStart < startMax){
-					GridOffset -= offset;
-					GridOffset %= PlotGridX;
-					gridchanged= 1;
-				}
-				GraphStart += offset;
+				GraphStart += (int)(20 / GraphPixelsPerPoint);
 			} else {
-				if (PlotGridX && GridLocked && GraphStart < startMax){
-					GridOffset--;
-					GridOffset %= PlotGridX;
-					gridchanged= 1;
-				}
 				GraphStart++;
 			}
-			if(GridOffset < 0) {
-				GridOffset += PlotGridX;
-			}
-			if (gridchanged)
-				if (GraphStart > startMax) {
-					GridOffset += (GraphStart - startMax);
-					GridOffset %= PlotGridX;
-				}
 			break;
 
 		case Qt::Key_Left:
 			if(GraphPixelsPerPoint < 20) {
-				if (PlotGridX && GridLocked && GraphStart > 0){
-					GridOffset += offset;
-					GridOffset %= PlotGridX;
-					gridchanged= 1;
-				}
-				GraphStart -= offset;
+				GraphStart -= (int)(20 / GraphPixelsPerPoint);
 			} else {
-				if (PlotGridX && GridLocked && GraphStart > 0){
-					GridOffset++;
-					GridOffset %= PlotGridX;
-					gridchanged= 1;
-				}
 				GraphStart--;
 			}
-			if (gridchanged){
-				if (GraphStart < 0)
-					GridOffset += GraphStart;
-				if(GridOffset < 0)
-					GridOffset += PlotGridX;
-			GridOffset %= PlotGridX;
-			}
-			break;
-
-		case Qt::Key_G:
-			if(PlotGridX || PlotGridY) {
-				PlotGridX= 0;
-				PlotGridY= 0;
-			} else {
-				PlotGridX= PlotGridXdefault;
-				PlotGridY= PlotGridYdefault;
-				}
-			break;
-
-		case Qt::Key_H:
-			puts("Plot Window Keystrokes:\n");
-			puts(" Key                      Action\n");
-			puts(" DOWN                     Zoom in");
-			puts(" G                        Toggle grid display");
-			puts(" H                        Show help");
-			puts(" L                        Toggle lock grid relative to samples");
-			puts(" LEFT                     Move left");
-			puts(" <CTL>LEFT                Move left 1 sample");
-			puts(" <SHIFT>LEFT              Page left");
-			puts(" LEFT-MOUSE-CLICK         Set yellow cursor");
-			puts(" Q                        Hide window");
-			puts(" RIGHT                    Move right");
-			puts(" <CTL>RIGHT               Move right 1 sample");
-			puts(" <SHIFT>RIGHT             Page right");
-			puts(" RIGHT-MOUSE-CLICK        Set purple cursor");
-			puts(" UP                       Zoom out");
-			puts("");
-			puts("Use client window 'data help' for more plot commands\n");
-			break;
-
-		case Qt::Key_L:
-			GridLocked= !GridLocked;
-			break;
-
-		case Qt::Key_Q:
-			this->hide();
 			break;
 
 		default:

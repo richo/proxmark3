@@ -5,7 +5,6 @@
 #-----------------------------------------------------------------------------
 include ../common/Makefile.common
 
-
 CC=gcc
 CXX=g++
 #COMMON_FLAGS = -m32
@@ -15,28 +14,20 @@ OBJDIR = obj
 
 LDLIBS = -L/usr/local/Cellar/readline/6.2.4/lib -L/opt/local/lib -L/usr/local/lib -lreadline -lpthread -lusb ../liblua/liblua.a
 LDFLAGS = $(COMMON_FLAGS)
-CFLAGS = -std=c99 -I. -I../include -I../common -I/opt/local/include -I../liblua -Wall $(COMMON_FLAGS) -I/usr/local/Cellar/readline/6.2.4/include -g -O4
-LUAPLATFORM = generic
+CFLAGS = -g -std=c99 -I. -I../include -I../common -I/opt/local/include -I../liblua -Wall $(COMMON_FLAGS) -I/usr/local/Cellar/readline/6.2.4/include -g -O4
 
 ifneq (,$(findstring MINGW,$(platform)))
 CXXFLAGS = -I$(QTDIR)/include -I$(QTDIR)/include/QtCore -I$(QTDIR)/include/QtGui
 QTLDLIBS = -L$(QTDIR)/lib -lQtCore4 -lQtGui4
-MOC = $(QTDIR)/bin/moc
-LUAPLATFORM = mingw
+MOC = moc
 else ifeq ($(platform),Darwin)
 CXXFLAGS = -I/Library/Frameworks/QtGui.framework/Versions/Current/Headers -I/Library/Frameworks/QtCore.framework/Versions/Current/Headers
 QTLDLIBS = -framework QtGui -framework QtCore
 MOC = moc
-LUAPLATFORM = macosx
 else
-CXXFLAGS = $(shell pkg-config --cflags QtCore QtGui 2>/dev/null) -Wall -O4
+CXXFLAGS = $(shell pkg-config --cflags QtCore QtGui 2>/dev/null) -Wall -O3
 QTLDLIBS = $(shell pkg-config --libs QtCore QtGui 2>/dev/null)
 MOC = $(shell pkg-config --variable=moc_location QtCore)
-LDLIBS +=  -ldl
-
-# Below is a variant you can use if you have problems compiling with QT5 on ubuntu. see http://www.proxmark.org/forum/viewtopic.php?id=1661 for more info.
-#MOC = /usr/lib/x86_64-linux-gnu/qt4/bin/moc
-LUAPLATFORM = linux
 endif
 
 
@@ -48,14 +39,10 @@ else
 QTGUI = guidummy.o
 endif
 
-CORESRCS = 	uart.c \
-		util.c \
-		sleep.c
-
-
-CMDSRCS = 	nonce2key/crapto1.c\
-		nonce2key/crypto1.c\
-		nonce2key/nonce2key.c\
+CMDSRCS = \
+			nonce2key/crapto1.c\
+			nonce2key/crypto1.c\
+			nonce2key/nonce2key.c\
 			mifarehost.c\
 			crc16.c \
 			iso14443crc.c \
@@ -63,54 +50,45 @@ CMDSRCS = 	nonce2key/crapto1.c\
 			data.c \
 			graph.c \
 			ui.c \
+			util.c \
 			cmddata.c \
 			cmdhf.c \
 			cmdhf14a.c \
 			cmdhf14b.c \
 			cmdhf15.c \
-			cmdhfepa.c \
 			cmdhflegic.c \
 			cmdhficlass.c \
 			cmdhfmf.c \
 			cmdhw.c \
 			cmdlf.c \
-			cmdlfhid.c \
 			cmdlfem4x.c \
-			cmdlfhitag.c \
+			cmdlfhid.c \
 			cmdlfti.c \
 			cmdparser.c \
-			cmdmain.c \
-			cmdlft55xx.c \
-			cmdlfpcf7931.c\
-			pm3_binlib.c\
-			scripting.c\
-			cmdscript.c\
-			pm3_bitlib.c\
+			cmdmain.c
 
-
-COREOBJS = $(CORESRCS:%.c=$(OBJDIR)/%.o)
 CMDOBJS = $(CMDSRCS:%.c=$(OBJDIR)/%.o)
 
 RM = rm -f
-BINS = proxmark3 flasher #snooper cli
+BINS = proxmark3 snooper cli flasher
 CLEAN = cli cli.exe flasher flasher.exe proxmark3 proxmark3.exe snooper snooper.exe $(CMDOBJS) $(OBJDIR)/*.o *.o *.moc.cpp
 
-all: lua_build $(BINS)
+all: $(BINS)
 
 all-static: LDLIBS:=-static $(LDLIBS)
 all-static: snooper cli flasher
 
 proxmark3: LDLIBS+=$(QTLDLIBS)
-proxmark3: $(OBJDIR)/proxmark3.o $(COREOBJS) $(CMDOBJS) $(QTGUI)
+proxmark3: $(OBJDIR)/proxmark3.o $(CMDOBJS) $(OBJDIR)/proxusb.o $(QTGUI)
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@
 
-snooper: $(OBJDIR)/snooper.o $(COREOBJS) $(CMDOBJS) $(OBJDIR)/guidummy.o
+snooper: $(OBJDIR)/snooper.o $(CMDOBJS) $(OBJDIR)/proxusb.o $(OBJDIR)/guidummy.o
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@
 
-cli: $(OBJDIR)/cli.o $(COREOBJS) $(CMDOBJS) $(OBJDIR)/guidummy.o
+cli: $(OBJDIR)/cli.o $(CMDOBJS) $(OBJDIR)/proxusb.o $(OBJDIR)/guidummy.o
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@
 
-flasher: $(OBJDIR)/flash.o $(OBJDIR)/flasher.o $(COREOBJS)
+flasher: $(OBJDIR)/flash.o $(OBJDIR)/flasher.o $(OBJDIR)/proxusb.o
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@
 
 $(OBJDIR)/%.o: %.c
@@ -124,7 +102,6 @@ proxguiqt.moc.cpp: proxguiqt.h
 
 clean:
 	$(RM) $(CLEAN)
-	cd ../liblua && make clean
 
 tarbin: $(BINS)
 	$(TAR) $(TARFLAGS) ../proxmark3-$(platform)-bin.tar $(BINS:%=client/%)
@@ -139,9 +116,5 @@ install_kext: Info.plist
 	rm -rf /System/Library/Caches/com.apple.kext.caches
 	touch /System/Library/Extensions
 	@echo "*** You may need to reboot for the kext to take effect."
-
-lua_build:
-	@echo Compiling liblua, using platform $(LUAPLATFORM)
-	cd ../liblua && make $(LUAPLATFORM)
 
 .PHONY: all clean

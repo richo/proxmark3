@@ -10,9 +10,7 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <inttypes.h>
-//#include "proxusb.h"
-#include "proxmark3.h"
+#include "proxusb.h"
 #include "ui.h"
 #include "graph.h"
 #include "cmdparser.h"
@@ -248,20 +246,11 @@ int CmdEM410xSim(const char *Cmd)
  * looped until an EM410x tag is detected */
 int CmdEM410xWatch(const char *Cmd)
 {
-  int read_h = (*Cmd == 'h');
   do
   {
-    CmdLFRead(read_h ? "h" : "");
-    // 2000 samples is OK for clock=64, but not clock=32.  Probably want
-		//   8000 for clock=16.  Don't want to go too high since old HID driver
-		//   is very slow
-		// TBD: Auto-grow sample size based on detected sample rate.  IE: If the
-		//   rate gets lower, then grow the number of samples
-
-    // Changed by martin, 4000 x 4 = 16000, 
-    // see http://www.proxmark.org/forum/viewtopic.php?pid=7235#p7235
-		CmdSamples("16000");
- } while ( ! CmdEM410xRead(""));
+    CmdLFRead("");
+    CmdSamples("2000");
+  } while ( ! CmdEM410xRead(""));
   return 0;
 }
 
@@ -286,12 +275,13 @@ int CmdEM410xWatch(const char *Cmd)
  */
 int CmdEM4x50Read(const char *Cmd)
 {
-  int i, j, startblock, skip, block, start, end, low, high;
+  int i, j, startblock, clock, skip, block, start, end, low, high;
   bool complete= false;
   int tmpbuff[MAX_GRAPH_TRACE_LEN / 64];
   char tmp[6];
 
   high= low= 0;
+  clock= 64;
   memset(tmpbuff, 0, MAX_GRAPH_TRACE_LEN / 64);
 
   /* first get high and low values */
@@ -409,184 +399,13 @@ int CmdEM4x50Read(const char *Cmd)
   return 0;
 }
 
-int CmdEM410xWrite(const char *Cmd)
+static command_t CommandTable[] = 
 {
-  uint64_t id = 0xFFFFFFFFFFFFFFFF; // invalid id value
-  int card = 0xFF; // invalid card value
-	unsigned int clock = 0; // invalid clock value
-
-	sscanf(Cmd, "%" PRIx64 " %d %d", &id, &card, &clock);
-
-	// Check ID
-	if (id == 0xFFFFFFFFFFFFFFFF) {
-		PrintAndLog("Error! ID is required.\n");
-		return 0;
-	}
-	if (id >= 0x10000000000) {
-		PrintAndLog("Error! Given EM410x ID is longer than 40 bits.\n");
-		return 0;
-	}
-
-	// Check Card
-	if (card == 0xFF) {
-		PrintAndLog("Error! Card type required.\n");
-		return 0;
-	}
-	if (card < 0) {
-		PrintAndLog("Error! Bad card type selected.\n");
-		return 0;
-	}
-
-	// Check Clock
-	if (card == 1)
-	{
-		// Default: 64
-		if (clock == 0)
-			clock = 64;
-
-		// Allowed clock rates: 16, 32 and 64
-		if ((clock != 16) && (clock != 32) && (clock != 64)) {
-			PrintAndLog("Error! Clock rate %d not valid. Supported clock rates are 16, 32 and 64.\n", clock);
-			return 0;
-		}
-	}
-	else if (clock != 0)
-	{
-		PrintAndLog("Error! Clock rate is only supported on T55x7 tags.\n");
-		return 0;
-	}
-
-	if (card == 1) {
-		PrintAndLog("Writing %s tag with UID 0x%010" PRIx64 " (clock rate: %d)", "T55x7", id, clock);
-		// NOTE: We really should pass the clock in as a separate argument, but to
-		//   provide for backwards-compatibility for older firmware, and to avoid
-		//   having to add another argument to CMD_EM410X_WRITE_TAG, we just store
-		//   the clock rate in bits 8-15 of the card value
-		card = (card & 0xFF) | (((uint64_t)clock << 8) & 0xFF00);
-	}
-	else if (card == 0)
-		PrintAndLog("Writing %s tag with UID 0x%010" PRIx64, "T5555", id, clock);
-	else {
-		PrintAndLog("Error! Bad card type selected.\n");
-		return 0;
-	}
-
-  UsbCommand c = {CMD_EM410X_WRITE_TAG, {card, (uint32_t)(id >> 32), (uint32_t)id}};
-  SendCommand(&c);
-
-  return 0;
-}
-
-int CmdReadWord(const char *Cmd)
-{
-  int Word = 16; //default to invalid word
-  UsbCommand c;
-  
-  sscanf(Cmd, "%d", &Word);
-  
-  if (Word > 15) {
-    PrintAndLog("Word must be between 0 and 15");
-    return 1;
-  }
-  
-  PrintAndLog("Reading word %d", Word);
-  
-  c.cmd = CMD_EM4X_READ_WORD;
-  c.d.asBytes[0] = 0x0; //Normal mode
-  c.arg[0] = 0;
-  c.arg[1] = Word;
-  c.arg[2] = 0;
-  SendCommand(&c);
-  return 0;
-}
-
-int CmdReadWordPWD(const char *Cmd)
-{
-  int Word = 16; //default to invalid word
-  int Password = 0xFFFFFFFF; //default to blank password
-  UsbCommand c;
-  
-  sscanf(Cmd, "%d %x", &Word, &Password);
-  
-  if (Word > 15) {
-    PrintAndLog("Word must be between 0 and 15");
-    return 1;
-  }
-  
-  PrintAndLog("Reading word %d with password %08X", Word, Password);
-  
-  c.cmd = CMD_EM4X_READ_WORD;
-  c.d.asBytes[0] = 0x1; //Password mode
-  c.arg[0] = 0;
-  c.arg[1] = Word;
-  c.arg[2] = Password;
-  SendCommand(&c);
-  return 0;
-}
-
-int CmdWriteWord(const char *Cmd)
-{
-  int Word = 16; //default to invalid block
-  int Data = 0xFFFFFFFF; //default to blank data
-  UsbCommand c;
-  
-  sscanf(Cmd, "%x %d", &Data, &Word);
-  
-  if (Word > 15) {
-    PrintAndLog("Word must be between 0 and 15");
-    return 1;
-  }
-  
-  PrintAndLog("Writting word %d with data %08X", Word, Data);
-  
-  c.cmd = CMD_EM4X_WRITE_WORD;
-  c.d.asBytes[0] = 0x0; //Normal mode
-  c.arg[0] = Data;
-  c.arg[1] = Word;
-  c.arg[2] = 0;
-  SendCommand(&c);
-  return 0;
-}
-
-int CmdWriteWordPWD(const char *Cmd)
-{
-  int Word = 8; //default to invalid word
-  int Data = 0xFFFFFFFF; //default to blank data
-  int Password = 0xFFFFFFFF; //default to blank password
-  UsbCommand c;
-  
-  sscanf(Cmd, "%x %d %x", &Data, &Word, &Password);
-  
-  if (Word > 15) {
-    PrintAndLog("Word must be between 0 and 15");
-    return 1;
-  }
-  
-  PrintAndLog("Writting word %d with data %08X and password %08X", Word, Data, Password);
-  
-  c.cmd = CMD_EM4X_WRITE_WORD;
-  c.d.asBytes[0] = 0x1; //Password mode
-  c.arg[0] = Data;
-  c.arg[1] = Word;
-  c.arg[2] = Password;
-  SendCommand(&c);
-  return 0;
-}
-
-
-
-static command_t CommandTable[] =
-{
-  {"help", CmdHelp, 1, "This help"},
-  {"em410xread", CmdEM410xRead, 1, "[clock rate] -- Extract ID from EM410x tag"},
-  {"em410xsim", CmdEM410xSim, 0, "<UID> -- Simulate EM410x tag"},
-  {"em410xwatch", CmdEM410xWatch, 0, "['h'] -- Watches for EM410x 125/134 kHz tags (option 'h' for 134)"},
-  {"em410xwrite", CmdEM410xWrite, 1, "<UID> <'0' T5555> <'1' T55x7> [clock rate] -- Write EM410x UID to T5555(Q5) or T55x7 tag, optionally setting clock rate"},
-  {"em4x50read", CmdEM4x50Read, 1, "Extract data from EM4x50 tag"},
-  {"readword", CmdReadWord, 1, "<Word> -- Read EM4xxx word data"},
-  {"readwordPWD", CmdReadWordPWD, 1, "<Word> <Password> -- Read EM4xxx word data in password mode"},
-  {"writeword", CmdWriteWord, 1, "<Data> <Word> -- Write EM4xxx word data"},
-  {"writewordPWD", CmdWriteWordPWD, 1, "<Data> <Word> <Password> -- Write EM4xxx word data in password mode"},
+  {"help",        CmdHelp,        1, "This help"},
+  {"em410xread",  CmdEM410xRead,  1, "[clock rate] -- Extract ID from EM410x tag"},
+  {"em410xsim",   CmdEM410xSim,   0, "<UID> -- Simulate EM410x tag"},
+  {"em410xwatch", CmdEM410xWatch, 0, "Watches for EM410x tags"},
+  {"em4x50read",  CmdEM4x50Read,  1, "Extract data from EM4x50 tag"},
   {NULL, NULL, 0, NULL}
 };
 
